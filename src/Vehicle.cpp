@@ -25,14 +25,14 @@ void Vehicle::setCurrentDestination(std::shared_ptr<Intersection> destination)
 void Vehicle::simulate()
 {
     // launch drive function in a thread
-    threads.emplace_back(std::thread(&Vehicle::drive, this));
+   threads.emplace_back(std::thread(&Vehicle::drive, this));
 }
 
 // virtual function which is executed in a thread
 void Vehicle::drive()
 {
     // print id of the current thread
-    std::unique_lock<std::mutex> lck(_mtx);
+    std::unique_lock<std::mutex> lck(_mtxCout);
     std::cout << "Vehicle #" << _id << "::drive: thread id = " << std::this_thread::get_id() << std::endl;
     lck.unlock();
 
@@ -76,12 +76,15 @@ void Vehicle::drive()
             // check wether halting position in front of destination has been reached
             if (completion >= 0.9 && !hasEnteredIntersection)
             {
-                // request entry to the current intersection (using async)
-                auto ftrEntryGranted = std::async(&Intersection::addVehicleToQueue, _currDestination, get_shared_this());
+                 //TL2.1 - start up a task using std::async which takes a reference to the method 
+                //Intersection::addVehicleToQueue, the object _currDestination and a shared pointer 
+                //to this using the get_shared_this() function. Then, wait for the data to be available 
+                //before proceeding to slow down.
 
-                // wait until entry has been granted
-                ftrEntryGranted.get();
+                auto ftr = std::async(&Intersection::addVehicleToQueue, _currDestination, get_shared_this());
 
+                ftr.wait();
+                
                 // slow down and set intersection flag
                 _speed /= 10.0;
                 hasEnteredIntersection = true;
@@ -90,6 +93,7 @@ void Vehicle::drive()
             // check wether intersection has been crossed
             if (completion >= 1.0 && hasEnteredIntersection)
             {
+               
                 // choose next street and destination
                 std::vector<std::shared_ptr<Street>> streetOptions = _currDestination->queryStreets(_currStreet);
                 std::shared_ptr<Street> nextStreet;
@@ -116,7 +120,7 @@ void Vehicle::drive()
                 // assign new street and destination
                 this->setCurrentDestination(nextIntersection);
                 this->setCurrentStreet(nextStreet);
-
+                
                 // reset speed and intersection flag
                 _speed *= 10.0;
                 hasEnteredIntersection = false;
